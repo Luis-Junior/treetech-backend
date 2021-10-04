@@ -4,15 +4,21 @@ import { Classificacao } from './../models/Classificacao';
 import { Alarme } from './../models/Alarme';
 import { Request, Response } from 'express';
 import { Equipamento } from '../models/Equipamento';
+import nodemailer from 'nodemailer'
+import dotenv from 'dotenv'
+
+dotenv.config()
 // import { Atuado } from '../models/Atuados';
 
 
 export const getAll = async (req: Request, res: Response) => {
-    let order:any
-    if(req.query.ordenar === 'equipamento'){
-        order = [ Equipamento, 'nome', req.query.reverse==='true' ? 'DESC': 'ASC']
+    let order: any
+    if (req.query.ordenar === 'equipamento') {
+        order = [Equipamento, 'nome', req.query.reverse === 'true' ? 'DESC' : 'ASC']
+    } else if(req.query.ordenar === 'equipamentodescr'){
+        order = [Equipamento, 'descricao', req.query.reverse === 'true' ? 'DESC' : 'ASC']
     }else{
-        order = [req.query.ordenar ? req.query.ordenar as string : 'id', req.query.reverse==='true' ? 'DESC': 'ASC']
+        order = [req.query.ordenar ? req.query.ordenar as string : 'id', req.query.reverse === 'true' ? 'DESC' : 'ASC']
     }
     let alarmes = await Alarme.findAll({
         include: [
@@ -20,7 +26,7 @@ export const getAll = async (req: Request, res: Response) => {
             { model: Equipamento, required: true },
             { model: Status, required: true },
         ],
-        order:[order]
+        order: [order]
     })
     if (alarmes) {
         res.send(alarmes)
@@ -33,7 +39,7 @@ export const getById = async (req: Request, res: Response) => {
     let alarme = await Alarme.findByPk(req.params.id, {
         include: [
             { model: Classificacao, required: true },
-            { model: Equipamento, required: true, include: [{model: Tipo, required:true}] },
+            { model: Equipamento, required: true, include: [{ model: Tipo, required: true }] },
             { model: Status, required: true },
         ]
     })
@@ -72,7 +78,7 @@ export const update = async (req: Request, res: Response) => {
     let { descricao, classificacao_id, equipamento_id } = req.body
     if (!descricao || !classificacao_id || !equipamento_id) {
         res.status(400).send("Todos os campos precisam estar preenchidos")
-    } 
+    }
     else {
         let alarme = await Alarme.findByPk(req.params.id)
         if (alarme) {
@@ -87,10 +93,10 @@ export const update = async (req: Request, res: Response) => {
 }
 
 export const findByClassificacao = async (req: Request, res: Response) => {
-    if(req.params.id && (+req.params.id > 0 && +req.params.id <=3) ){
+    if (req.params.id && (+req.params.id > 0 && +req.params.id <= 3)) {
         let alarmes = await Alarme.findAll({
             include: [
-                { model: Classificacao, required: true, where: {id: req.params.id} },
+                { model: Classificacao, required: true, where: { id: req.params.id } },
                 { model: Equipamento, required: true },
                 { model: Status, required: true },
             ],
@@ -100,39 +106,82 @@ export const findByClassificacao = async (req: Request, res: Response) => {
         } else {
             res.send({ erro: "erro" })
         }
-    } else{
-        res.status(400).send({erro: 'falotou os params ou estão incorretos'})
+    } else {
+        res.status(400).send({ erro: 'falotou os params ou estão incorretos' })
     }
 }
 
-// export const ativarAlarme = async (req: Request, res: Response) => {
-//     let alarme_id = req.params.id
-//     if (alarme_id) {
-//         let autuado = await Atuado.findOne({ where: { alarme_id: alarme_id } })
-//         if (!autuado) {
-//             Atuado.create({
-//                 entrada: new Date(),
-//                 saida: null,
-//                 alarme_id
-//             }).then(() => res.status(201).send(true)).catch((erro) => res.status(404).send(erro))
-//         } else { res.send("ainda não há saida") }
-//     } else {
-//         res.status(404).send("Id do alarme é obrigatorio")
-//     }
-// }
-// export const desativarAlarme = async (req: Request, res: Response) => {
-//     let alarme_id = req.params.id
-//     if (alarme_id) {
-//         let autuado = await Atuado.findOne({ where: { alarme_id: alarme_id } })
-//         if (autuado) {
-//             if(autuado.saida === null){
-//                 autuado.saida = new Date()
-//                 await autuado.save().then(() => res.status(201).send(true)).catch((erro) => res.status(404).send(erro))
-//             }else{
-//                 res.send("Ainda não saida da entrada anterior")
-//             }
-//         } else { res.send("ainda não há saida da ativação anterior") }
-//     } else {
-//         res.status(404).send("Id do alarme é obrigatorio")
-//     }
-// }
+export const ativarAlarme = async (req: Request, res: Response) => {
+    console.log('ativar')
+    let alarme = await Alarme.findByPk(req.params.id)
+    if (alarme) {
+        if (alarme.status_id == 2) {
+            alarme.vezes_autuado = alarme.vezes_autuado + 1
+            alarme.status_id = 1
+            alarme.entrada = new Date()
+            alarme.saida = null
+
+            await alarme.save().then((alarme) => {
+                if (alarme.classificacao_id == 3) {
+                    let transport = nodemailer.createTransport({
+                        host: process.env.HOST_EMAIL as string,
+                        port: parseInt(process.env.PORT_EMAIL as string),
+                        auth: {
+                            user: process.env.AUTH_EMAIL_USER as string,
+                            pass: process.env.AUTH_EMAIL_PASS as string
+                        }
+                    });
+                    let email = {
+                        from: 'Luis Junior <junior.plens@hotmail.com>',
+                        to: 'abcd@abc.com.br',
+                        subject: 'Alarme com classificação "ALTO" ativado',
+                        html: `O alarme <strong>${alarme.descricao}</strong>, que tem sua classificacao <strong style="color:red;">ALTA</strong> foi ativado hoje as ${alarme.entrada}`,
+                        text: `O alarme ${alarme.descricao}, que tem sua classificacao ALTA foi ativado hoje as ${alarme.entrada}`
+                    }
+                    let enviar = async ()=>{
+                        return await transport.sendMail(email)
+                    }
+                    enviar().then(() => res.status(201).send({ resultado: "email enviado para o email abcd@abc.com.br" })
+                    ).catch((erro) => res.status(400).send(erro))
+
+                } else {
+                    res.status(200).send(true)
+                }
+            }).catch((erro) => res.status(400).send(erro))
+        } else if (alarme.status_id == 1) {
+            res.status(400).send({ erro: "Não pode ativar um alarme já ativo" })
+        } else {
+            res.status(400).send({ erro: "??" })
+        }
+    } else {
+        res.status(400).send({ erro: "alarme nao encontrado" })
+    }
+}
+export const desativarAlarme = async (req: Request, res: Response) => {
+    console.log('desativar')
+    let alarme = await Alarme.findByPk(req.params.id)
+    if (alarme) {
+        if (alarme.status_id == 1) {
+            alarme.vezes_autuado = alarme.vezes_autuado
+            alarme.status_id = 2
+            alarme.saida = new Date()
+            await alarme.save().then(() => res.status(201).send(true)).catch((erro) => res.status(400).send(erro))
+        } else if (alarme.status_id == 2) {
+            res.status(400).send({ erro: "Não pode desativar um alarme já desativado" })
+        } else {
+            res.status(400).send({ erro: "??" })
+        }
+    } else {
+        res.status(400).send({ erro: "alarme nao encontrado" })
+    }
+}
+
+export const maisAtuados = async (req: Request, res: Response) => {
+    await Alarme.findAll({
+        include:[{model:Equipamento, required:true}],
+        order:[['vezes_autuado', 'DESC']],
+        limit: 3
+    }).then((alarmes)=>{
+        res.status(200).send(alarmes)
+    }).catch((erro)=>res.status(400).send(erro))
+}

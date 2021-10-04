@@ -12,7 +12,9 @@ export interface AlarmeInstance extends Model {
     creat_at: Date,
     equipamento_id: number,
     status_id:number,
-    vezes_autuado: number
+    vezes_autuado: number,
+    entrada: Date | null
+    saida: Date | null
 }
 
 export const Alarme = db.define<AlarmeInstance>("alarme", {
@@ -38,6 +40,14 @@ export const Alarme = db.define<AlarmeInstance>("alarme", {
     },
     vezes_autuado: {
         type: DataTypes.INTEGER
+    },
+    entrada:{
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    saida:{
+        type: DataTypes.DATE,
+        allowNull: true
     }
 }, {
     tableName: 'alarmes',
