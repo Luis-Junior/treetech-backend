@@ -8,6 +8,7 @@ import * as logController from './controllers/logController'
 
 import bodyParser from 'body-parser'
 
+
 dotenv.config();
 const server = express();
 server.use(cors());
