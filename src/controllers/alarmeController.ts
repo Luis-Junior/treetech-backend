@@ -4,6 +4,7 @@ import { Classificacao } from './../models/Classificacao';
 import { Alarme } from './../models/Alarme';
 import { Request, Response } from 'express';
 import { Equipamento } from '../models/Equipamento';
+import { newLog } from '../services/LogService'
 import nodemailer from 'nodemailer'
 import dotenv from 'dotenv'
 
@@ -30,6 +31,7 @@ export const getAll = async (req: Request, res: Response) => {
     })
     if (alarmes) {
         res.send(alarmes)
+        newLog('Acessou getAll de alarmes', JSON.stringify(alarmes), "nenhum", "GET - /alarmes")
     } else {
         res.send({ erro: "erro" })
     }
@@ -45,6 +47,7 @@ export const getById = async (req: Request, res: Response) => {
     })
     if (alarme) {
         res.send(alarme)
+        newLog('Acessou getById de alarmes', JSON.stringify(alarme), "nenhum", `GET - /alarmes/${req.params.id}`)
     } else {
         res.status(400).send({ erro: "não existe" })
     }
@@ -60,7 +63,10 @@ export const create = async (req: Request, res: Response) => {
             classificacao_id,
             creat_at: new Date(),
             equipamento_id,
-        }).then(() => res.status(201).send(true)).catch(() => res.status(404).send(false))
+        }).then((alarme) => {
+            res.status(201).send(true)
+            newLog('Criou um alarme novo', "CRIOU", JSON.stringify(alarme), `POST - /alarmes`)
+        }).catch((erro) => res.status(404).send(erro))
     }
 
 }
@@ -68,7 +74,10 @@ export const create = async (req: Request, res: Response) => {
 export const deleteAlarme = async (req: Request, res: Response) => {
     let alarme = await Alarme.findByPk(req.params.id)
     if (alarme) {
-        await alarme.destroy().then(() => res.status(201).send(true)).catch((erro) => res.status(404).send(erro))
+        await alarme.destroy().then(() => {
+            newLog('Deletou um alarme',JSON.stringify(alarme), "DELETOU", `DELETE - /alarmes/${req.params.id}`)
+            res.status(201).send(true)
+        }).catch((erro) => res.status(404).send(erro))
     } else {
         res.status(400).send("Alarme não existe")
     }
@@ -81,11 +90,15 @@ export const update = async (req: Request, res: Response) => {
     }
     else {
         let alarme = await Alarme.findByPk(req.params.id)
+        let valorAnterior = JSON.stringify(alarme)
         if (alarme) {
             alarme.descricao = descricao
             alarme.classificacao_id = classificacao_id
             alarme.equipamento_id = equipamento_id
-            await alarme.save().then(() => res.status(201).send(true)).catch((erro) => res.status(404).send(erro))
+            await alarme.save().then((alarme_att) => {
+                res.status(201).send(true)
+                newLog('Atualizou um alarme',JSON.stringify(valorAnterior), JSON.stringify(alarme_att), `PUT - /alarmes/${req.params.id}`)
+            }).catch((erro) => res.status(404).send(erro))
         } else {
             res.status(400).send("Não existe")
         }
@@ -103,6 +116,7 @@ export const findByClassificacao = async (req: Request, res: Response) => {
         })
         if (alarmes) {
             res.send(alarmes)
+            newLog('Acessou alarmes filtrando pela classificacao',JSON.stringify(alarmes), "nenhum", `GET - /alarmes/findByClassificacao/${req.params.id}`)
         } else {
             res.send({ erro: "erro" })
         }
@@ -141,17 +155,23 @@ export const ativarAlarme = async (req: Request, res: Response) => {
                     let enviar = async ()=>{
                         return await transport.sendMail(email)
                     }
-                    enviar().then(() => res.status(201).send({ resultado: "email enviado para o email abcd@abc.com.br" })
+                    enviar().then(() => {
+                        res.status(201).send({ resultado: "email enviado para o email abcd@abc.com.br" })
+                        newLog(`Ativou o alarme de id:${req.params.id} e encaminhou um email para abcd@abc.com.br`,"nenhum", "nenhum", `GET - /alarmes/ativaralarme/${req.params.id}`)
+                    }
                     ).catch((erro) => res.status(400).send(erro))
 
                 } else {
                     res.status(200).send(true)
+                    newLog(`Ativou o alarme de id:${req.params.id}`,"nenhum", "nenhum", `GET - /alarmes/ativaralarme/${req.params.id}`)
+                    
                 }
             }).catch((erro) => res.status(400).send(erro))
         } else if (alarme.status_id == 1) {
             res.status(400).send({ erro: "Não pode ativar um alarme já ativo" })
+            newLog('Tentou ativar um alarme já ativo',"nenhum", "nenhum", `GET - /alarmes/ativaralarme/${req.params.id}`)
         } else {
-            res.status(400).send({ erro: "??" })
+            res.status(400).send({ erro: "erro" })
         }
     } else {
         res.status(400).send({ erro: "alarme nao encontrado" })
@@ -165,9 +185,13 @@ export const desativarAlarme = async (req: Request, res: Response) => {
             alarme.vezes_autuado = alarme.vezes_autuado
             alarme.status_id = 2
             alarme.saida = new Date()
-            await alarme.save().then(() => res.status(201).send(true)).catch((erro) => res.status(400).send(erro))
+            await alarme.save().then(() => {
+                res.status(201).send(true)
+                newLog(`Desativou o alarme de id:${req.params.id}`,"nenhum", "nenhum", `GET - /alarmes/desativarAlarme/${req.params.id}`)
+            }).catch((erro) => res.status(400).send(erro))
         } else if (alarme.status_id == 2) {
             res.status(400).send({ erro: "Não pode desativar um alarme já desativado" })
+            newLog('Tentou desativar um alarme já desativado',"nenhum", "nenhum", `GET - /alarmes/desativarAlarme/${req.params.id}`)
         } else {
             res.status(400).send({ erro: "??" })
         }
@@ -183,5 +207,6 @@ export const maisAtuados = async (req: Request, res: Response) => {
         limit: 3
     }).then((alarmes)=>{
         res.status(200).send(alarmes)
+        newLog('Acessou os 3 alarmes mais atuados',JSON.stringify(alarmes), "nenhum", `GET - /alarmes/maisAtuados`)
     }).catch((erro)=>res.status(400).send(erro))
 }
